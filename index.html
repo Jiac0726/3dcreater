@@ -6,7 +6,7 @@
 <main class="layout"><aside><label for="prompt">一句话描述场景</label><textarea id="prompt">一个晶莹透明的冰山果冻，内部有企鹅、浮冰和破冰船，海水可以扰动，冰山可以崩解</textarea>
 <div class="actions"><button id="generate">✦ 生成场景</button><button class="secondary" id="export">导出 HTML</button></div>
 <p class="tip">预设场景使用关键词提取参数，未连接 AI API。支持冰山、企鹅、船、水面；输入“草莓/紫色/蓝色”改变配色，“更多企鹅”“大海浪”等调整配置。</p>
-<label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
+<label>继续修改场景</label><input id="editPrompt" placeholder="例如：改成7只企鹅，蓝莓材质"><div class="actions"><button class="secondary" id="edit">应用文字修改</button><button class="secondary" id="downloadSpec">导出 SceneSpec</button></div><label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
 <label>企鹅数量 <span id="penguinVal">22</span></label><input id="penguins" type="range" min="0" max="40" value="22">
 <label>水面扰动 <span id="waveVal">38</span></label><input id="waves" type="range" min="0" max="100" value="38">
 <label>果冻透明度 <span id="glassVal">65</span></label><input id="glass" type="range" min="10" max="95" value="65">
@@ -15,9 +15,10 @@
 </aside><section class="stage"><canvas id="world"></canvas><div class="hud"><strong id="sceneTitle">ICEBERG JELLY</strong><span id="meta">企鹅 22 · 浮冰 · Polaris 破冰船</span></div><div class="bottom"><span class="tag">程序化 3D · 基础波面与冰块交互 · 非精密流体模拟</span></div></section></main>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+import {planScene,applySceneEdit} from './src/scene-spec.mjs';
 const $=id=>document.getElementById(id), canvas=$('world');
 const defaults={flavour:'mint',penguins:22,waves:38,glass:65};
-let settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
+let settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
 const colors={mint:0x63ced1,blue:0x3e9de8,purple:0x9c80d3,pink:0xff8fb0};
 function mat(c,rough=.75){return new THREE.MeshStandardMaterial({color:c,roughness:rough})}
 function mesh(g,m,parent=root,x=0,y=0,z=0){const a=new THREE.Mesh(g,m);a.position.set(x,y,z);parent.add(a);return a}
@@ -26,6 +27,36 @@ function createPenguin(x,z,size=1){const g=new THREE.Group();g.position.set(x,.8
 function makeShip(){ship=new THREE.Group();ship.position.set(.25,.88,.22);root.add(ship);mesh(new THREE.BoxGeometry(.42,.19,.88),mat(0xbc4d42),ship,0,0,0);mesh(new THREE.BoxGeometry(.34,.21,.51),mat(0xe8eee9),ship,0,.18,-.04);mesh(new THREE.BoxGeometry(.23,.16,.24),mat(0x42657b),ship,0,.37,.02);mesh(new THREE.CylinderGeometry(.043,.043,.25,9),mat(0xd3a454),ship,0,.54,-.16);return ship}
 function cleanup(){if(root){scene.remove(root);root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())}})}}
 function build(){cleanup();root=new THREE.Group();scene.add(root);icePieces=[];let color=colors[settings.flavour]||colors.mint;
+if(currentSpec.kind==='volcano'){
+  mesh(new THREE.CylinderGeometry(2.3,2.5,.7,11),mat(0x47795c),root,0,.42,0);
+  mesh(new THREE.ConeGeometry(1.15,2.4,9),mat(0x72534a),root,-.6,1.9,-.5);
+  mesh(new THREE.CylinderGeometry(.29,.29,.035,16),mat(0xff693b),root,-.6,3.11,-.5);
+  for(let i=0;i<8;i++){let a=i*2*Math.PI/8;const tr=new THREE.Group();root.add(tr);tr.position.set(Math.cos(a)*1.6,.8,Math.sin(a)*1.6);
+    mesh(new THREE.CylinderGeometry(.055,.09,.62,7),mat(0x745947),tr,0,.3,0);
+    mesh(new THREE.ConeGeometry(.31,.8,7),mat(0x4b9466),tr,0,.85,0)}
+  sea=mesh(new THREE.PlaneGeometry(6.4,6.4,48,48).rotateX(-Math.PI/2),
+    new THREE.MeshStandardMaterial({color:0x3c9fb8,transparent:true,opacity:.7,side:THREE.DoubleSide}),root,0,.25,0);
+  waterPositions=sea.geometry.attributes.position;waterBase=Array.from(waterPositions.array);
+  iceGroup=new THREE.Group();root.add(iceGroup);penguinGroup=new THREE.Group();root.add(penguinGroup);
+  ship=new THREE.Group();root.add(ship);ship.position.set(1.6,.5,-.9);
+  mesh(new THREE.BoxGeometry(.35,.14,.7),mat(0xe7ebdb),ship);
+  $('sceneTitle').textContent='VOLCANIC ISLAND';$('meta').textContent='火山 · 热带树木 · 船只';return;
+}
+if(currentSpec.kind==='lab'){
+  mesh(new THREE.BoxGeometry(6.5,.25,6.5),mat(0x576076),root,0,.0,0);
+  mesh(new THREE.CylinderGeometry(1.3,1.3,.2,32),mat(0x8f9ba8,.2),root,0,.27,0);
+  glass=mesh(new THREE.SphereGeometry(1.12,40,24),new THREE.MeshPhysicalMaterial({color:colors[settings.flavour],roughness:.13,transparent:true,opacity:.75,transmission:.19}),root,0,1.45,0);
+  glass.scale.y=.78;
+  for(let x of [-1.75,1.75])mesh(new THREE.BoxGeometry(.23,3.7,.25),mat(0x87939a,.2),root,x,2,0);
+  mesh(new THREE.BoxGeometry(4,.33,1.35),mat(0x69747c,.15),root,0,3.9,0);
+  const head=mesh(new THREE.CylinderGeometry(.95,.95,.27,32),mat(0xb6c4c9,.15),root,0,3.2,0);head.userData.pressHead=true;
+  sea=mesh(new THREE.PlaneGeometry(1,1,1,1).rotateX(-Math.PI/2),mat(0x576076),root,0,-10,0);
+  waterPositions=sea.geometry.attributes.position;waterBase=Array.from(waterPositions.array);
+  iceGroup=new THREE.Group();root.add(iceGroup);penguinGroup=new THREE.Group();root.add(penguinGroup);
+  ship=new THREE.Group();root.add(ship);
+  $('sceneTitle').textContent='JELLY LABORATORY';$('meta').textContent='果冻 · 液压机 · 材质实验';return;
+}
+$('sceneTitle').textContent='ICEBERG JELLY';
 const base=mesh(new THREE.BoxGeometry(6.5,.8,6.5),new THREE.MeshPhysicalMaterial({color:color,roughness:.14,transparent:true,opacity:settings.glass/130,depthWrite:false,metalness:.04}),root,0,.12,0);
 const floor=mesh(new THREE.BoxGeometry(6.45,.12,6.45),mat(0x487783),root,0,.49,0);
 const wg=new THREE.PlaneGeometry(6.4,6.4,56,56);wg.rotateX(-Math.PI/2);waterPositions=wg.attributes.position;waterBase=Array.from(waterPositions.array);sea=mesh(wg,new THREE.MeshPhysicalMaterial({color:color,metalness:.12,roughness:.22,transparent:true,opacity:.79,side:THREE.DoubleSide}),root,0,.76,0);
@@ -39,17 +70,19 @@ for(let i=0;i<settings.penguins;i++){let ang=i*2.39996,r=.15+Math.sqrt((i+.5)/Ma
 makeShip();$('meta').textContent='企鹅 '+settings.penguins+' · 浮冰 · Polaris 破冰船';
 }
 function updateInputs(){for(const k of ['flavour','penguins','waves','glass']){$(k).value=settings[k];if($(k+'Val'))$(k+'Val').textContent=settings[k]}}
-function specFromText(p){const a=Object.assign({},settings);if(/紫|黑莓/.test(p))a.flavour='purple';else if(/草莓|粉色/.test(p))a.flavour='pink';else if(/蓝|深海/.test(p))a.flavour='blue';else if(/薄荷|冰山|极地/.test(p))a.flavour='mint';if(/更多企鹅|企鹅很多|成群企鹅/.test(p))a.penguins=34;if(/没有企鹅|无企鹅/.test(p))a.penguins=0;let n=p.match(/(\d+)\s*只企鹅/);if(n)a.penguins=Math.min(40,+n[1]);if(/大海浪|巨浪|波涛/.test(p))a.waves=85;if(/平静|无波浪/.test(p))a.waves=8;if(/更透明|非常透明/.test(p))a.glass=35;if(/不透明/.test(p))a.glass=90;return a}
+function specFromText(p){currentSpec=planScene(p,'balanced');return {flavour:currentSpec.environment.palette,penguins:currentSpec.objects.find(o=>o.type==='penguin')?.count||0,waves:currentSpec.environment.waves,glass:currentSpec.environment.transparency}}
 function changed(){settings.flavour=$('flavour').value;for(const k of ['penguins','waves','glass'])settings[k]=+$ (k).value;updateInputs();build();$('message').textContent='参数已更新，场景已重新渲染。'}
 for(const k of ['flavour','penguins','waves','glass'])$(k).addEventListener('input',changed);
-$('generate').onclick=()=>{settings=specFromText($('prompt').value);updateInputs();build();$('message').textContent='已从描述提取场景参数并生成（模板驱动）。'};
-$('calve').onclick=()=>{for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
+$('generate').onclick=()=>{try{settings=specFromText($('prompt').value);updateInputs();build();$('message').textContent='已从描述提取场景参数并生成（模板驱动）。'};
+$('edit').onclick=()=>{try{currentSpec=applySceneEdit(currentSpec,$('editPrompt').value);settings.flavour=currentSpec.environment.palette;settings.waves=currentSpec.environment.waves;settings.penguins=currentSpec.objects.find(o=>o.type==='penguin')?.count||0;updateInputs();build();$('message').textContent='已应用文字修改'}catch(e){$('message').textContent=e.message}};
+$('downloadSpec').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-spec.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('calve').onclick=()=>{if(currentSpec.kind!=='polar'){$('message').textContent='此交互仅支持冰山场景';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
 $('stir').onclick=()=>{shock=1.8;$('message').textContent='已激发水面波动。'};
-$('reset').onclick=()=>{settings=Object.assign({},defaults);updateInputs();build();shock=0;$('message').textContent='已恢复默认场景。'};
+$('reset').onclick=()=>{currentSpec=planScene('冰山果冻，企鹅，破冰船');settings=Object.assign({},defaults);updateInputs();build();shock=0;$('message').textContent='已恢复默认场景。'};
 $('export').onclick=()=>{let source='<!doctype html>\n'+document.documentElement.outerHTML;source=source.replace(/<script\s+id="export-state"[\s\S]*?<\/script>/g,'');const json=JSON.stringify(settings).replace(/</g,'\\u003c');source=source.replace('<script type="module">','<script id="export-state">window.__INITIAL_SCENE__='+json+';<\/script><script type="module">');const u=URL.createObjectURL(new Blob([source],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='ai-scene-studio-export.html';a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);$('message').textContent='已导出 HTML（联网加载 Three.js）。'};
 function init(){scene=new THREE.Scene();scene.background=new THREE.Color(0x19313f);scene.fog=new THREE.Fog(0x19313f,17,29);camera=new THREE.PerspectiveCamera(42,1,.1,120);renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;scene.add(new THREE.HemisphereLight(0xe9fbff,0x547b84,2.3));const light=new THREE.DirectionalLight(0xffffff,3.1);light.position.set(-4,9,6);scene.add(light);updateInputs();build();animate()}
 function animate(){animationId=requestAnimationFrame(animate);const rect=canvas.getBoundingClientRect();if(renderer.domElement.width!==Math.floor(rect.width*renderer.getPixelRatio())||renderer.domElement.height!==Math.floor(rect.height*renderer.getPixelRatio())){renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/Math.max(1,rect.height);camera.updateProjectionMatrix()}t+=.016;shock*=.975;let amplitude=(settings.waves/100)*.075+shock*.11;const ar=waterPositions.array;for(let i=0;i<ar.length;i+=3){let x=waterBase[i],z=waterBase[i+2];ar[i+1]=Math.sin(x*3.1+t*2.4)*Math.cos(z*3.7+t*1.7)*amplitude+Math.sin(z*5-t*3)*amplitude*.26}waterPositions.needsUpdate=true;sea.geometry.computeVertexNormals();for(const p of icePieces){if(p.userData.falling){p.userData.speed+=.008;p.position.y-=p.userData.speed;if(p.position.y<=.85){p.position.y=.85;p.userData.falling=false;p.userData.baseY=.85;shock=Math.max(shock,.48)}}else p.position.y=p.userData.baseY+Math.sin(t*1.7+p.userData.seed)*.045;p.rotation.z=Math.sin(t+p.userData.seed)*.055}
-penguinGroup.children.forEach(p=>{p.rotation.y=Math.sin(t*.6+p.userData.phase)*.48;p.position.y=.81+Math.sin(t*2+p.userData.phase)*.012});ship.position.x=.25+Math.sin(t*.34)*1.5;ship.position.z=.22+Math.cos(t*.34)*.68;ship.rotation.y=Math.cos(t*.34)*.35;ship.rotation.z=Math.sin(t*2)*.027;camera.position.set(Math.sin(orbit.theta)*orbit.dist*Math.sin(orbit.phi),Math.cos(orbit.phi)*orbit.dist,Math.cos(orbit.theta)*orbit.dist*Math.sin(orbit.phi));camera.lookAt(0,.8,0);renderer.render(scene,camera)}
+penguinGroup.children.forEach(p=>{p.rotation.y=Math.sin(t*.6+p.userData.phase)*.48;p.position.y=.81+Math.sin(t*2+p.userData.phase)*.012});if(currentSpec.kind==='polar'){ship.position.x=.25+Math.sin(t*.34)*1.5;ship.position.z=.22+Math.cos(t*.34)*.68;ship.rotation.y=Math.cos(t*.34)*.35;ship.rotation.z=Math.sin(t*2)*.027;}else if(currentSpec.kind==='volcano'){ship.position.x=1.6+Math.sin(t*.34)*.3;}else if(glass){glass.scale.y=.78+Math.sin(t*2)*.035;}camera.position.set(Math.sin(orbit.theta)*orbit.dist*Math.sin(orbit.phi),Math.cos(orbit.phi)*orbit.dist,Math.cos(orbit.theta)*orbit.dist*Math.sin(orbit.phi));camera.lookAt(0,.8,0);renderer.render(scene,camera)}
 canvas.addEventListener('pointerdown',e=>{orbit.down=true;orbit.x=e.clientX;orbit.y=e.clientY;canvas.setPointerCapture(e.pointerId);const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);const hits=raycaster.intersectObjects(iceGroup.children);if(hits.length){hits[0].object.position.x+=(Math.random()-.5)*.8;hits[0].object.position.z+=(Math.random()-.5)*.8;shock=.4}else shock=Math.max(shock,.24)});
 canvas.addEventListener('pointermove',e=>{if(!orbit.down)return;orbit.theta-=(e.clientX-orbit.x)*.006;orbit.phi=Math.max(.30,Math.min(1.48,orbit.phi+(e.clientY-orbit.y)*.005));orbit.x=e.clientX;orbit.y=e.clientY});canvas.addEventListener('pointerup',()=>orbit.down=false);
 canvas.addEventListener('wheel',e=>{e.preventDefault();orbit.dist=Math.max(6.5,Math.min(24,orbit.dist+e.deltaY*.013))},{passive:false});
