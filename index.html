@@ -6,7 +6,7 @@
 <main class="layout"><aside><label for="prompt">一句话描述场景</label><textarea id="prompt">一个晶莹透明的冰山果冻，内部有企鹅、浮冰和破冰船，海水可以扰动，冰山可以崩解</textarea>
 <div class="actions"><button id="generate">✦ 生成场景</button><button class="secondary" id="export">导出 HTML</button></div>
 <p class="tip">预设场景使用关键词提取参数，未连接 AI API。支持冰山、企鹅、船、水面；输入“草莓/紫色/蓝色”改变配色，“更多企鹅”“大海浪”等调整配置。</p>
-<div class="actions"><button class="secondary" id="undo">撤销</button><button class="secondary" id="redo">重做</button><button class="secondary" id="save">保存场景</button><button class="secondary" id="open">打开场景</button></div><input id="openFile" type="file" accept=".json,application/json" hidden><label>选中对象 / 对象操作</label><select id="objects"></select><div class="actions"><select id="objectType" style="flex:1"><option value="tree">树</option><option value="ice">浮冰</option><option value="penguin">企鹅</option><option value="animal">动物</option><option value="jelly">果冻</option><option value="boat">船</option><option value="volcano">火山</option></select><button class="secondary" id="addObject">新增</button><button class="secondary" id="removeObject">删除</button></div><p class="small">点选场景对象后，在地面方向拖拽移动。基础碰撞检测只报告接近对象，不是刚体碰撞求解。</p><label>继续修改场景</label><input id="editPrompt" placeholder="例如：改成7只企鹅，蓝莓材质"><div class="actions"><button class="secondary" id="edit">应用文字修改</button><button class="secondary" id="downloadSpec">导出 SceneSpec</button></div><label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
+<div class="actions"><button class="secondary" id="undo">撤销</button><button class="secondary" id="redo">重做</button><button class="secondary" id="save">保存场景</button><button class="secondary" id="open">打开场景</button></div><input id="openFile" type="file" accept=".json,application/json" hidden><label>选中对象 / 对象操作</label><select id="objects"></select><div class="actions"><select id="objectType" style="flex:1"><option value="tree">树</option><option value="ice">浮冰</option><option value="penguin">企鹅</option><option value="animal">动物</option><option value="jelly">果冻</option><option value="boat">船</option><option value="volcano">火山</option></select><button class="secondary" id="addObject">新增</button><button class="secondary" id="removeObject">删除</button><button class="secondary" id="resolveCollisions">分离重叠</button></div><p class="small">点选场景对象后，在地面方向拖拽移动。基础碰撞检测只报告接近对象，不是刚体碰撞求解。</p><label>继续修改场景</label><input id="editPrompt" placeholder="例如：改成7只企鹅，蓝莓材质"><div class="actions"><button class="secondary" id="edit">应用文字修改</button><button class="secondary" id="downloadSpec">导出 SceneSpec</button></div><label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
 <label>企鹅数量 <span id="penguinVal">22</span></label><input id="penguins" type="range" min="0" max="40" value="22">
 <label>水面扰动 <span id="waveVal">38</span></label><input id="waves" type="range" min="0" max="100" value="38">
 <label>果冻透明度 <span id="glassVal">65</span></label><input id="glass" type="range" min="10" max="95" value="65">
@@ -18,6 +18,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.m
 import {planScene,applySceneEdit} from './src/scene-spec.mjs';
 import {createHistory} from './src/history.mjs';
 import {addObject,removeObject,moveObject,detectCollisions} from './src/scene-operations.mjs';
+import {resolveSceneOverlaps} from './src/physics.mjs';
 const $=id=>document.getElementById(id), canvas=$('world');
 const defaults={flavour:'mint',penguins:22,waves:38,glass:65};
 let selectedId=null,dragItem=null,settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=window.__EXPORTED_SCENE__||planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),history=createHistory(currentSpec),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
@@ -135,6 +136,7 @@ $('openFile').onchange=async e=>{try{const raw=JSON.parse(await e.target.files[0
 $('objects').onchange=()=>{selectedId=$('objects').value;$('message').textContent='已选中 '+selectedId};
 $('addObject').onclick=()=>{try{loadSpec(addObject(currentSpec,$('objectType').value,[0,1,0]));selectedId=currentSpec.objects.at(-1).id;history.push(currentSpec);updateObjectList();$('message').textContent='已添加 '+selectedId}catch(e){$('message').textContent=e.message}};
 $('removeObject').onclick=()=>{try{if(!selectedId)return;loadSpec(removeObject(currentSpec,selectedId));history.push(currentSpec);$('message').textContent='已删除 '+selectedId;selectedId=null;updateObjectList()}catch(e){$('message').textContent=e.message}};
+$('resolveCollisions').onclick=()=>{try{const r=resolveSceneOverlaps(currentSpec);loadSpec(r.spec);history.push(currentSpec);$('message').textContent='接触分离：处理 '+r.resolved+' 次重叠（基础二维近似）'}catch(e){$('message').textContent=e.message}};
 $('downloadSpec').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-spec.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('calve').onclick=()=>{if(!currentSpec.objects.some(o=>o.type==='iceberg')){$('message').textContent='该场景没有冰山对象';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
 $('stir').onclick=()=>{shock=1.8;$('message').textContent='已激发水面波动。'};
@@ -143,6 +145,7 @@ $('export').onclick=async()=>{try{
  const plannerSource=await fetch('./src/scene-spec.mjs').then(r=>{if(!r.ok)throw Error('SceneSpec 文件无法读取');return r.text()});
  const historySource=await fetch('./src/history.mjs').then(r=>r.text());
  const operationsSource=await fetch('./src/scene-operations.mjs').then(r=>r.text());
+ const physicsSource=await fetch('./src/physics.mjs').then(r=>r.text());
  let source='<!doctype html>\n'+document.documentElement.outerHTML;
  source=source.replace(/<script\s+id="export-state"[\s\S]*?<\/script>/g,'');
  const json=JSON.stringify(settings).replace(/</g,'\\u003c');
@@ -151,6 +154,7 @@ $('export').onclick=async()=>{try{
  source=source.replace("import {planScene,applySceneEdit} from './src/scene-spec.mjs';",plannerSource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  source=source.replace("import {createHistory} from './src/history.mjs';",historySource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  source=source.replace("import {addObject,removeObject,moveObject,detectCollisions} from './src/scene-operations.mjs';",operationsSource.replace(/^import .*;$/gm,'').replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
+ source=source.replace("import {resolveSceneOverlaps} from './src/physics.mjs';",physicsSource.replace(/^import .*;$/gm,'').replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  const u=URL.createObjectURL(new Blob([source],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='ai-scene-studio-export.html';a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);
  $('message').textContent='已导出 HTML：SceneSpec 内嵌，仍需联网加载 Three.js。';
  }catch(err){$('message').textContent='导出失败：'+err.message}};
