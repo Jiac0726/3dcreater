@@ -108,7 +108,18 @@ function build(){
 }
 function updateInputs(){for(const k of ['flavour','penguins','waves','glass']){$(k).value=settings[k];if($(k+'Val'))$(k+'Val').textContent=settings[k]}}
 function specFromText(p){currentSpec=planScene(p,'balanced');return {flavour:currentSpec.environment.palette,penguins:currentSpec.objects.find(o=>o.type==='penguin')?.count||0,waves:currentSpec.environment.waves,glass:currentSpec.environment.transparency}}
-function changed(){settings.flavour=$('flavour').value;for(const k of ['penguins','waves','glass'])settings[k]=+$ (k).value;updateInputs();build();$('message').textContent='参数已更新，场景已重新渲染。'}
+function changed(){
+ settings.flavour=$('flavour').value;
+ for(const k of ['penguins','waves','glass'])settings[k]=+$(k).value;
+ currentSpec=JSON.parse(JSON.stringify(currentSpec));
+ currentSpec.environment.palette=settings.flavour;
+ currentSpec.environment.waves=settings.waves;
+ currentSpec.environment.transparency=settings.glass;
+ const p=currentSpec.objects.find(o=>o.type==='penguin');
+ if(p)p.count=settings.penguins;
+ history.push(currentSpec);updateInputs();build();
+ $('message').textContent='对象参数已更新并记录到 SceneSpec。';
+}
 for(const k of ['flavour','penguins','waves','glass'])$(k).addEventListener('input',changed);
 function loadSpec(spec){currentSpec=spec;settings={flavour:spec.environment.palette,penguins:spec.objects.find(o=>o.type==='penguin')?.count||0,waves:spec.environment.waves,glass:spec.environment.transparency};updateInputs();build()}
 $('generate').onclick=async()=>{try{const prompt=$('prompt').value;let result;try{const resp=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,quality:'balanced'})});if(!resp.ok)throw Error('API unavailable');result=await resp.json();if(result.error)throw Error(result.error)}catch{result={spec:planScene(prompt,'balanced'),mode:'rules'}};loadSpec(result.spec);history.push(currentSpec);$('message').textContent='已生成 '+currentSpec.kind+' 场景（'+result.mode+'）。'}catch(e){$('message').textContent='生成失败：'+e.message}};
@@ -119,7 +130,7 @@ $('save').onclick=()=>{const a=document.createElement('a');const url=URL.createO
 $('open').onclick=()=>$('openFile').click();
 $('openFile').onchange=async e=>{try{const raw=JSON.parse(await e.target.files[0].text());const {validateScene}=await import('./src/scene-spec.mjs');loadSpec(validateScene(raw));history.push(currentSpec);$('message').textContent='项目已加载'}catch(err){$('message').textContent='导入失败：'+err.message}};
 $('downloadSpec').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-spec.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('calve').onclick=()=>{if(currentSpec.kind!=='polar'){$('message').textContent='此交互仅支持冰山场景';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
+$('calve').onclick=()=>{if(!currentSpec.objects.some(o=>o.type==='iceberg')){$('message').textContent='该场景没有冰山对象';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
 $('stir').onclick=()=>{shock=1.8;$('message').textContent='已激发水面波动。'};
 $('reset').onclick=()=>{currentSpec=planScene('冰山果冻，企鹅，破冰船');settings=Object.assign({},defaults);updateInputs();build();shock=0;$('message').textContent='已恢复默认场景。'};
 $('export').onclick=async()=>{try{
