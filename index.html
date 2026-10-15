@@ -27,48 +27,84 @@ function ice(x,y,z,s=1){let p=mesh(new THREE.DodecahedronGeometry(s,1),new THREE
 function createPenguin(x,z,size=1){const g=new THREE.Group();g.position.set(x,.81,z);g.scale.setScalar(size);penguinGroup.add(g);mesh(new THREE.SphereGeometry(.115,10,8),mat(0x182a37),g,0,.17,0).scale.set(.8,1.45,.77);mesh(new THREE.SphereGeometry(.087,10,8),mat(0xffffff),g,0,.16,.067).scale.set(.83,1.11,.35);mesh(new THREE.SphereGeometry(.09,10,8),mat(0x1b2c38),g,0,.39,0);mesh(new THREE.ConeGeometry(.043,.10,5),mat(0xffb94b),g,0,.34,.102).rotation.x=Math.PI/2;for(const s of [-1,1]){mesh(new THREE.SphereGeometry(.025,8,6),mat(0xffb94b),g,s*.069,.027,.06);mesh(new THREE.SphereGeometry(.014,7,5),mat(0xffffff),g,s*.037,.40,.075)}g.userData.phase=Math.random()*7;return g}
 function makeShip(){ship=new THREE.Group();ship.position.set(.25,.88,.22);root.add(ship);mesh(new THREE.BoxGeometry(.42,.19,.88),mat(0xbc4d42),ship,0,0,0);mesh(new THREE.BoxGeometry(.34,.21,.51),mat(0xe8eee9),ship,0,.18,-.04);mesh(new THREE.BoxGeometry(.23,.16,.24),mat(0x42657b),ship,0,.37,.02);mesh(new THREE.CylinderGeometry(.043,.043,.25,9),mat(0xd3a454),ship,0,.54,-.16);return ship}
 function cleanup(){if(root){scene.remove(root);root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())}})}}
-function build(){cleanup();root=new THREE.Group();scene.add(root);icePieces=[];let color=colors[settings.flavour]||colors.mint;
-if(currentSpec.kind==='volcano'){
-  mesh(new THREE.CylinderGeometry(2.3,2.5,.7,11),mat(0x47795c),root,0,.42,0);
-  mesh(new THREE.ConeGeometry(1.15,2.4,9),mat(0x72534a),root,-.6,1.9,-.5);
-  mesh(new THREE.CylinderGeometry(.29,.29,.035,16),mat(0xff693b),root,-.6,3.11,-.5);
-  for(let i=0;i<8;i++){let a=i*2*Math.PI/8;const tr=new THREE.Group();root.add(tr);tr.position.set(Math.cos(a)*1.6,.8,Math.sin(a)*1.6);
-    mesh(new THREE.CylinderGeometry(.055,.09,.62,7),mat(0x745947),tr,0,.3,0);
-    mesh(new THREE.ConeGeometry(.31,.8,7),mat(0x4b9466),tr,0,.85,0)}
-  sea=mesh(new THREE.PlaneGeometry(6.4,6.4,48,48).rotateX(-Math.PI/2),
-    new THREE.MeshStandardMaterial({color:0x3c9fb8,transparent:true,opacity:.7,side:THREE.DoubleSide}),root,0,.25,0);
-  waterPositions=sea.geometry.attributes.position;waterBase=Array.from(waterPositions.array);
-  iceGroup=new THREE.Group();root.add(iceGroup);penguinGroup=new THREE.Group();root.add(penguinGroup);
-  ship=new THREE.Group();root.add(ship);ship.position.set(1.6,.5,-.9);
-  mesh(new THREE.BoxGeometry(.35,.14,.7),mat(0xe7ebdb),ship);
-  $('sceneTitle').textContent='VOLCANIC ISLAND';$('meta').textContent='火山 · 热带树木 · 船只';return;
-}
-if(currentSpec.kind==='lab'){
-  mesh(new THREE.BoxGeometry(6.5,.25,6.5),mat(0x576076),root,0,.0,0);
-  mesh(new THREE.CylinderGeometry(1.3,1.3,.2,32),mat(0x8f9ba8,.2),root,0,.27,0);
-  glass=mesh(new THREE.SphereGeometry(1.12,40,24),new THREE.MeshPhysicalMaterial({color:colors[settings.flavour],roughness:.13,transparent:true,opacity:.75,transmission:.19}),root,0,1.45,0);
-  glass.scale.y=.78;
-  for(let x of [-1.75,1.75])mesh(new THREE.BoxGeometry(.23,3.7,.25),mat(0x87939a,.2),root,x,2,0);
-  mesh(new THREE.BoxGeometry(4,.33,1.35),mat(0x69747c,.15),root,0,3.9,0);
-  const head=mesh(new THREE.CylinderGeometry(.95,.95,.27,32),mat(0xb6c4c9,.15),root,0,3.2,0);head.userData.pressHead=true;
-  sea=mesh(new THREE.PlaneGeometry(1,1,1,1).rotateX(-Math.PI/2),mat(0x576076),root,0,-10,0);
-  waterPositions=sea.geometry.attributes.position;waterBase=Array.from(waterPositions.array);
-  iceGroup=new THREE.Group();root.add(iceGroup);penguinGroup=new THREE.Group();root.add(penguinGroup);
-  ship=new THREE.Group();root.add(ship);
-  $('sceneTitle').textContent='JELLY LABORATORY';$('meta').textContent='果冻 · 液压机 · 材质实验';return;
-}
-$('sceneTitle').textContent='ICEBERG JELLY';
-const base=mesh(new THREE.BoxGeometry(6.5,.8,6.5),new THREE.MeshPhysicalMaterial({color:color,roughness:.14,transparent:true,opacity:settings.glass/130,depthWrite:false,metalness:.04}),root,0,.12,0);
-const floor=mesh(new THREE.BoxGeometry(6.45,.12,6.45),mat(0x487783),root,0,.49,0);
-const wg=new THREE.PlaneGeometry(6.4,6.4,56,56);wg.rotateX(-Math.PI/2);waterPositions=wg.attributes.position;waterBase=Array.from(waterPositions.array);sea=mesh(wg,new THREE.MeshPhysicalMaterial({color:color,metalness:.12,roughness:.22,transparent:true,opacity:.79,side:THREE.DoubleSide}),root,0,.76,0);
-const peak=mesh(new THREE.ConeGeometry(1.20,2.35,7,3),mat(0xb9e8ed),root,-1.28,1.82,-1.32);peak.rotation.z=.14;
-mesh(new THREE.ConeGeometry(.72,1.42,7),mat(0xe5fcff),root,-1.84,1.73,-1.7);
-const land=mesh(new THREE.CylinderGeometry(1.2,1.4,.38,9),mat(0xe6f8f7),root,1.65,.73,1.55);land.scale.z=.72;
-iceGroup=new THREE.Group();root.add(iceGroup);
-[[-.85,.88,.6,.35],[.7,.85,-1.4,.27],[1.1,.8,.2,.3],[-1.7,.83,1.35,.26],[.5,.78,1.6,.22],[1.85,.82,-.7,.3]].forEach(q=>ice(...q));
-penguinGroup=new THREE.Group();root.add(penguinGroup);
-for(let i=0;i<settings.penguins;i++){let ang=i*2.39996,r=.15+Math.sqrt((i+.5)/Math.max(1,settings.penguins))*.8;createPenguin(1.65+Math.cos(ang)*r,1.55+Math.sin(ang)*r,.72+Math.random()*.28)}
-makeShip();$('meta').textContent='企鹅 '+settings.penguins+' · 浮冰 · Polaris 破冰船';
+function build(){
+ cleanup();root=new THREE.Group();scene.add(root);
+ icePieces=[];glass=null;ship=new THREE.Group();root.add(ship);
+ iceGroup=new THREE.Group();root.add(iceGroup);
+ penguinGroup=new THREE.Group();root.add(penguinGroup);
+ const color=colors[settings.flavour]||colors.mint;
+ const place=(g,o)=>{g.position.set(...o.position);if(o.scale)g.scale.set(...o.scale);g.userData.sceneId=o.id;return g};
+ const box=(w,h,d,c,g,x=0,y=0,z=0)=>mesh(new THREE.BoxGeometry(w,h,d),mat(c),g,x,y,z);
+ const obj=(o)=>{
+ const g=new THREE.Group();root.add(g);place(g,o);
+ switch(o.type){
+ case 'water':{
+  root.remove(g);const wg=new THREE.PlaneGeometry(6.4,6.4,56,56);wg.rotateX(-Math.PI/2);
+  sea=mesh(wg,new THREE.MeshPhysicalMaterial({color,roughness:.23,metalness:.1,transparent:true,opacity:.77,side:THREE.DoubleSide}),root,...o.position);
+  sea.userData.sceneId=o.id;waterPositions=wg.attributes.position;waterBase=Array.from(waterPositions.array);
+  break;
+ }
+ case 'iceberg':{
+  mesh(new THREE.ConeGeometry(1.17,2.2,7),mat(0xb9e8ed),g,0,.35,0).rotation.z=.16;
+  mesh(new THREE.ConeGeometry(.63,1.4,6),mat(0xe5fbff),g,-.45,.45,-.25);break;
+ }
+ case 'ice':{
+  root.remove(g);const n=Math.max(1,Math.min(40,o.count||1));
+  for(let i=0;i<n;i++){const theta=i*2.4,r=.35+Math.sqrt(i)*.42;
+    const p=ice(o.position[0]+Math.cos(theta)*r,o.position[1],o.position[2]+Math.sin(theta)*r,.18+(i%3)*.035);
+    p.userData.sceneId=o.id;p.userData.instance=i;
+  }break;
+ }
+ case 'penguin':{
+  root.remove(g);const n=Math.min(40,o.count??1);
+  for(let i=0;i<n;i++){const theta=i*2.39996,r=.12+Math.sqrt((i+.5)/Math.max(1,n))*.79;
+   const p=createPenguin(o.position[0]+Math.cos(theta)*r,o.position[2]+Math.sin(theta)*r,.72+(i%5)*.045);
+   p.userData.sceneId=o.id;p.position.y=o.position[1];
+  }break;
+ }
+ case 'icebreaker': case 'boat':{
+  root.remove(g);makeShip();ship.position.set(...o.position);
+  ship.userData.sceneId=o.id;break;
+ }
+ case 'island':{
+  mesh(new THREE.CylinderGeometry(2.2,2.4,.75,12),mat(0x467c64),g);break;
+ }
+ case 'volcano':{
+  mesh(new THREE.ConeGeometry(1.05,2.1,10),mat(0x76544d),g,0,.45,0);
+  mesh(new THREE.CylinderGeometry(.26,.26,.06,18),mat(0xff693c),g,0,1.51,0);break;
+ }
+ case 'tree':{
+  mesh(new THREE.CylinderGeometry(.065,.11,.8,8),mat(0x735d46),g,0,.38,0);
+  mesh(new THREE.ConeGeometry(.44,.98,9),mat(0x5b9e70),g,0,1.03,0);break;
+ }
+ case 'animal':{
+  mesh(new THREE.SphereGeometry(.24,16,12),mat(0xb6a086),g,0,.2,0);
+  mesh(new THREE.SphereGeometry(.14,12,10),mat(0xcab99b),g,0,.32,.23);break;
+ }
+ case 'jelly':{
+  glass=mesh(new THREE.SphereGeometry(1.1,36,24),new THREE.MeshPhysicalMaterial({color,roughness:.13,transparent:true,opacity:.74,transmission:.18}),g);
+  glass.scale.y=.78;break;
+ }
+ case 'press':{
+  box(3.5,.25,1.3,0x687c86,g,0,1.25,0);
+  for(const x of [-1.55,1.55])box(.18,3,.2,0x87939a,g,x,-.3,0);
+  box(2.3,.25,1.4,0xb7c5c9,g,0,-.45,0);break;
+ }
+ default:root.remove(g);
+ }
+ };
+ // Shared base is not an object inferred by the planner.
+ if(currentSpec.kind==='polar'){
+  mesh(new THREE.BoxGeometry(6.5,.8,6.5),new THREE.MeshPhysicalMaterial({color,roughness:.14,transparent:true,opacity:settings.glass/130,depthWrite:false}),root,0,.12,0);
+  box(6.45,.12,6.45,0x497982,root,0,.48,0);
+ }else if(currentSpec.kind==='lab'){box(6.5,.25,6.5,0x566075,root,0,.02,0)}
+ for(const o of currentSpec.objects)obj(o);
+ // The legacy animation loop expects a wave mesh even in dry scenes.
+ if(!sea){const g=new THREE.PlaneGeometry(1,1,1,1);g.rotateX(-Math.PI/2);
+ sea=mesh(g,new THREE.MeshBasicMaterial({visible:false}),root,0,-10,0);
+ waterPositions=g.attributes.position;waterBase=Array.from(waterPositions.array)}
+ $('sceneTitle').textContent=currentSpec.title.toUpperCase();
+ $('meta').textContent=currentSpec.objects.length+' 场景对象 · '+currentSpec.kind;
 }
 function updateInputs(){for(const k of ['flavour','penguins','waves','glass']){$(k).value=settings[k];if($(k+'Val'))$(k+'Val').textContent=settings[k]}}
 function specFromText(p){currentSpec=planScene(p,'balanced');return {flavour:currentSpec.environment.palette,penguins:currentSpec.objects.find(o=>o.type==='penguin')?.count||0,waves:currentSpec.environment.waves,glass:currentSpec.environment.transparency}}
