@@ -1,0 +1,13 @@
+{
+  "name": "ai-scene-studio",
+  "private": true,
+  "version": "0.6.0-alpha",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {"@playwright/test": "^1.56.0"}
+}
