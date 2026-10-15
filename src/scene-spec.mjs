@@ -42,7 +42,7 @@ export function validateScene(spec){
  return spec;
 }
 export function applySceneEdit(spec,instruction){
- const next=structuredClone(validateScene(spec)),txt=String(instruction||"").trim();if(!txt)throw Error("empty edit");
+ const next=JSON.parse(JSON.stringify(validateScene(spec))),txt=String(instruction||"").trim();if(!txt)throw Error("empty edit");
  const count=txt.match(/(\d+)\s*只企鹅/);
  if(count){const p=next.objects.find(o=>o.type==="penguin");if(!p)throw Error("scene has no penguins");p.count=Math.min(40,Number(count[1]));}
  if(/去掉企鹅|删除企鹅/.test(txt))next.objects=next.objects.filter(x=>x.type!=="penguin");
