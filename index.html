@@ -6,7 +6,7 @@
 <main class="layout"><aside><label for="prompt">一句话描述场景</label><textarea id="prompt">一个晶莹透明的冰山果冻，内部有企鹅、浮冰和破冰船，海水可以扰动，冰山可以崩解</textarea>
 <div class="actions"><button id="generate">✦ 生成场景</button><button class="secondary" id="export">导出 HTML</button></div>
 <p class="tip">预设场景使用关键词提取参数，未连接 AI API。支持冰山、企鹅、船、水面；输入“草莓/紫色/蓝色”改变配色，“更多企鹅”“大海浪”等调整配置。</p>
-<label>继续修改场景</label><input id="editPrompt" placeholder="例如：改成7只企鹅，蓝莓材质"><div class="actions"><button class="secondary" id="edit">应用文字修改</button><button class="secondary" id="downloadSpec">导出 SceneSpec</button></div><label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
+<div class="actions"><button class="secondary" id="undo">撤销</button><button class="secondary" id="redo">重做</button><button class="secondary" id="save">保存场景</button><button class="secondary" id="open">打开场景</button></div><input id="openFile" type="file" accept=".json,application/json" hidden><label>继续修改场景</label><input id="editPrompt" placeholder="例如：改成7只企鹅，蓝莓材质"><div class="actions"><button class="secondary" id="edit">应用文字修改</button><button class="secondary" id="downloadSpec">导出 SceneSpec</button></div><label>材质色彩</label><select id="flavour"><option value="mint">冰川薄荷</option><option value="blue">蓝莓海洋</option><option value="purple">黑莓紫晶</option><option value="pink">草莓果冻</option></select>
 <label>企鹅数量 <span id="penguinVal">22</span></label><input id="penguins" type="range" min="0" max="40" value="22">
 <label>水面扰动 <span id="waveVal">38</span></label><input id="waves" type="range" min="0" max="100" value="38">
 <label>果冻透明度 <span id="glassVal">65</span></label><input id="glass" type="range" min="10" max="95" value="65">
@@ -16,9 +16,10 @@
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
 import {planScene,applySceneEdit} from './src/scene-spec.mjs';
+import {createHistory} from './src/history.mjs';
 const $=id=>document.getElementById(id), canvas=$('world');
 const defaults={flavour:'mint',penguins:22,waves:38,glass:65};
-let settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
+let settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),history=createHistory(currentSpec),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
 const colors={mint:0x63ced1,blue:0x3e9de8,purple:0x9c80d3,pink:0xff8fb0};
 function mat(c,rough=.75){return new THREE.MeshStandardMaterial({color:c,roughness:rough})}
 function mesh(g,m,parent=root,x=0,y=0,z=0){const a=new THREE.Mesh(g,m);a.position.set(x,y,z);parent.add(a);return a}
@@ -73,19 +74,27 @@ function updateInputs(){for(const k of ['flavour','penguins','waves','glass']){$
 function specFromText(p){currentSpec=planScene(p,'balanced');return {flavour:currentSpec.environment.palette,penguins:currentSpec.objects.find(o=>o.type==='penguin')?.count||0,waves:currentSpec.environment.waves,glass:currentSpec.environment.transparency}}
 function changed(){settings.flavour=$('flavour').value;for(const k of ['penguins','waves','glass'])settings[k]=+$ (k).value;updateInputs();build();$('message').textContent='参数已更新，场景已重新渲染。'}
 for(const k of ['flavour','penguins','waves','glass'])$(k).addEventListener('input',changed);
-$('generate').onclick=()=>{try{settings=specFromText($('prompt').value);updateInputs();build();$('message').textContent='已生成 '+currentSpec.kind+' 场景（SceneSpec 规则规划器）。'}catch(e){$('message').textContent='生成失败：'+e.message}};
-$('edit').onclick=()=>{try{currentSpec=applySceneEdit(currentSpec,$('editPrompt').value);settings.flavour=currentSpec.environment.palette;settings.waves=currentSpec.environment.waves;settings.penguins=currentSpec.objects.find(o=>o.type==='penguin')?.count||0;updateInputs();build();$('message').textContent='已应用文字修改'}catch(e){$('message').textContent=e.message}};
+function loadSpec(spec){currentSpec=spec;settings={flavour:spec.environment.palette,penguins:spec.objects.find(o=>o.type==='penguin')?.count||0,waves:spec.environment.waves,glass:spec.environment.transparency};updateInputs();build()}
+$('generate').onclick=async()=>{try{const prompt=$('prompt').value;let result;try{const resp=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,quality:'balanced'})});if(!resp.ok)throw Error('API unavailable');result=await resp.json();if(result.error)throw Error(result.error)}catch{result={spec:planScene(prompt,'balanced'),mode:'rules'}};loadSpec(result.spec);history.push(currentSpec);$('message').textContent='已生成 '+currentSpec.kind+' 场景（'+result.mode+'）。'}catch(e){$('message').textContent='生成失败：'+e.message}};
+$('edit').onclick=()=>{try{currentSpec=applySceneEdit(currentSpec,$('editPrompt').value);settings.flavour=currentSpec.environment.palette;settings.waves=currentSpec.environment.waves;settings.penguins=currentSpec.objects.find(o=>o.type==='penguin')?.count||0;updateInputs();build();history.push(currentSpec);$('message').textContent='已应用文字修改'}catch(e){$('message').textContent=e.message}};
+$('undo').onclick=()=>{loadSpec(history.undo());$('message').textContent='已撤销'};
+$('redo').onclick=()=>{loadSpec(history.redo());$('message').textContent='已重做'};
+$('save').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-project.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('open').onclick=()=>$('openFile').click();
+$('openFile').onchange=async e=>{try{const raw=JSON.parse(await e.target.files[0].text());const {validateScene}=await import('./src/scene-spec.mjs');loadSpec(validateScene(raw));history.push(currentSpec);$('message').textContent='项目已加载'}catch(err){$('message').textContent='导入失败：'+err.message}};
 $('downloadSpec').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-spec.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('calve').onclick=()=>{if(currentSpec.kind!=='polar'){$('message').textContent='此交互仅支持冰山场景';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
 $('stir').onclick=()=>{shock=1.8;$('message').textContent='已激发水面波动。'};
 $('reset').onclick=()=>{currentSpec=planScene('冰山果冻，企鹅，破冰船');settings=Object.assign({},defaults);updateInputs();build();shock=0;$('message').textContent='已恢复默认场景。'};
 $('export').onclick=async()=>{try{
  const plannerSource=await fetch('./src/scene-spec.mjs').then(r=>{if(!r.ok)throw Error('SceneSpec 文件无法读取');return r.text()});
+ const historySource=await fetch('./src/history.mjs').then(r=>r.text());
  let source='<!doctype html>\n'+document.documentElement.outerHTML;
  source=source.replace(/<script\s+id="export-state"[\s\S]*?<\/script>/g,'');
  const json=JSON.stringify(settings).replace(/</g,'\\u003c');
  source=source.replace('<script type="module">','<script id="export-state">window.__INITIAL_SCENE__='+json+';<\/script><script type="module">');
  source=source.replace("import {planScene,applySceneEdit} from './src/scene-spec.mjs';",plannerSource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
+ source=source.replace("import {createHistory} from './src/history.mjs';",historySource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  const u=URL.createObjectURL(new Blob([source],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='ai-scene-studio-export.html';a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);
  $('message').textContent='已导出 HTML：SceneSpec 内嵌，仍需联网加载 Three.js。';
  }catch(err){$('message').textContent='导出失败：'+err.message}};
