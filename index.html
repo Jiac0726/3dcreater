@@ -42,9 +42,10 @@ import {createHistory} from './src/history.mjs';
 import {addObject,removeObject,moveObject,detectCollisions} from './src/scene-operations.mjs';
 import {resolveSceneOverlaps} from './src/physics.mjs';
 import {createStudioKit} from './src/studio-assets.mjs';
+import {createWaveSimulation} from './src/wave-sim.mjs';
 const $=id=>document.getElementById(id), canvas=$('world');
 const defaults={flavour:'mint',penguins:22,waves:38,glass:65};
-let studioKit=null,selectedId=null,dragItem=null,settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=window.__EXPORTED_SCENE__||planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),history=createHistory(currentSpec),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
+let waveSim=null,studioKit=null,selectedId=null,dragItem=null,settings=Object.assign({},defaults,window.__INITIAL_SCENE__||{}),currentSpec=window.__EXPORTED_SCENE__||planScene('一个晶莹透明的冰山果冻，22只企鹅，破冰船和浮冰'),history=createHistory(currentSpec),scene,camera,renderer,root,sea,iceGroup,penguinGroup,ship,glass,waterPositions,waterBase,raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),orbit={down:false,x:0,y:0,theta:.55,phi:.95,dist:13},t=0,shock=0,icePieces=[],animationId=0;
 const colors={mint:0x63ced1,blue:0x3e9de8,purple:0x9c80d3,pink:0xff8fb0};
 function mat(c,rough=.75){return new THREE.MeshStandardMaterial({color:c,roughness:rough})}
 function mesh(g,m,parent=root,x=0,y=0,z=0){const a=new THREE.Mesh(g,m);a.position.set(x,y,z);parent.add(a);return a}
@@ -54,7 +55,7 @@ function makeShip(){ship=new THREE.Group();ship.position.set(.25,.88,.22);root.a
 function cleanup(){if(root){scene.remove(root);root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())}})}}
 function build(){
  cleanup();root=new THREE.Group();scene.add(root);
- icePieces=[];glass=null;ship=new THREE.Group();root.add(ship);
+ icePieces=[];glass=null;waveSim=null;ship=new THREE.Group();root.add(ship);
  studioKit=createStudioKit(THREE,root);
  iceGroup=new THREE.Group();root.add(iceGroup);
  penguinGroup=new THREE.Group();root.add(penguinGroup);
@@ -68,6 +69,7 @@ function build(){
   root.remove(g);const wg=new THREE.PlaneGeometry(6.4,6.4,56,56);wg.rotateX(-Math.PI/2);
   sea=mesh(wg,new THREE.MeshPhysicalMaterial({color,roughness:.12,metalness:.07,transparent:true,opacity:.86,clearcoat:.8,clearcoatRoughness:.09,side:THREE.DoubleSide}),root,...o.position);
   sea.userData.sceneId=o.id;waterPositions=wg.attributes.position;waterBase=Array.from(waterPositions.array);
+  waveSim=createWaveSimulation(57,57);
   break;
  }
  case 'iceberg':{
@@ -168,13 +170,14 @@ $('removeObject').onclick=()=>{try{if(!selectedId)return;loadSpec(removeObject(c
 $('resolveCollisions').onclick=()=>{try{const r=resolveSceneOverlaps(currentSpec);loadSpec(r.spec);history.push(currentSpec);$('message').textContent='接触分离：处理 '+r.resolved+' 次重叠（基础二维近似）'}catch(e){$('message').textContent=e.message}};
 $('downloadSpec').onclick=()=>{const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(currentSpec,null,2)],{type:'application/json'}));a.href=url;a.download='scene-spec.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('calve').onclick=()=>{if(!currentSpec.objects.some(o=>o.type==='iceberg')){$('message').textContent='该场景没有冰山对象';return;}for(let i=0;i<4;i++){let p=ice(-1.3+Math.random()*.7,1.4+Math.random(),-1.1+Math.random()*.6,.14+Math.random()*.12);p.userData.falling=true;p.userData.speed=0}shock=1.3;$('message').textContent='冰川已崩解，新浮冰正在下落。'};
-$('stir').onclick=()=>{shock=1.8;$('message').textContent='已激发水面波动。'};
+$('stir').onclick=()=>{if(waveSim)waveSim.splash((Math.random()-.5)*3,(Math.random()-.5)*3,2.5);shock=1.8;$('message').textContent='已激发水面波动。'};
 $('reset').onclick=()=>{currentSpec=planScene('冰山果冻，企鹅，破冰船');settings=Object.assign({},defaults);updateInputs();build();shock=0;$('message').textContent='已恢复默认场景。'};
 $('export').onclick=async()=>{try{
  const plannerSource=await fetch('./src/scene-spec.mjs').then(r=>{if(!r.ok)throw Error('SceneSpec 文件无法读取');return r.text()});
  const historySource=await fetch('./src/history.mjs').then(r=>r.text());
  const operationsSource=await fetch('./src/scene-operations.mjs').then(r=>r.text());
  const studioAssetsSource=await fetch('./src/studio-assets.mjs').then(r=>r.text());
+ const wavesSource=await fetch('./src/wave-sim.mjs').then(r=>r.text());
  const physicsSource=await fetch('./src/physics.mjs').then(r=>r.text());
  let source='<!doctype html>\n'+document.documentElement.outerHTML;
  source=source.replace(/<script\s+id="export-state"[\s\S]*?<\/script>/g,'');
@@ -186,11 +189,12 @@ $('export').onclick=async()=>{try{
  source=source.replace("import {addObject,removeObject,moveObject,detectCollisions} from './src/scene-operations.mjs';",operationsSource.replace(/^import .*;$/gm,'').replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  source=source.replace("import {resolveSceneOverlaps} from './src/physics.mjs';",physicsSource.replace(/^import .*;$/gm,'').replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  source=source.replace("import {createStudioKit} from './src/studio-assets.mjs';",studioAssetsSource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
+ source=source.replace("import {createWaveSimulation} from './src/wave-sim.mjs';",wavesSource.replace(/\bexport\s+(?=(const|function|class)\b)/g,''));
  const u=URL.createObjectURL(new Blob([source],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='ai-scene-studio-export.html';a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);
  $('message').textContent='已导出 HTML：SceneSpec 内嵌，仍需联网加载 Three.js。';
  }catch(err){$('message').textContent='导出失败：'+err.message}};
 function init(){scene=new THREE.Scene();scene.background=new THREE.Color(0xe7eeef);scene.fog=new THREE.Fog(0xe7eeef,17,31);camera=new THREE.PerspectiveCamera(42,1,.1,120);renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;scene.add(new THREE.HemisphereLight(0xfcffff,0x7697a0,2.6));const light=new THREE.DirectionalLight(0xffffff,3.1);light.position.set(-4,9,6);scene.add(light);const fill=new THREE.DirectionalLight(0xd5f4ff,1.0);fill.position.set(4,3,-4);scene.add(fill);updateInputs();loadSpec(currentSpec);animate()}
-function animate(){animationId=requestAnimationFrame(animate);const rect=canvas.getBoundingClientRect();if(renderer.domElement.width!==Math.floor(rect.width*renderer.getPixelRatio())||renderer.domElement.height!==Math.floor(rect.height*renderer.getPixelRatio())){renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/Math.max(1,rect.height);camera.updateProjectionMatrix()}t+=.016;shock*=.975;let amplitude=(settings.waves/100)*.075+shock*.11;const ar=waterPositions.array;for(let i=0;i<ar.length;i+=3){let x=waterBase[i],z=waterBase[i+2];ar[i+1]=Math.sin(x*3.1+t*2.4)*Math.cos(z*3.7+t*1.7)*amplitude+Math.sin(z*5-t*3)*amplitude*.26}waterPositions.needsUpdate=true;sea.geometry.computeVertexNormals();for(const p of icePieces){if(p.userData.falling){p.userData.speed+=.008;p.position.y-=p.userData.speed;if(p.position.y<=.85){p.position.y=.85;p.userData.falling=false;p.userData.baseY=.85;shock=Math.max(shock,.48)}}else p.position.y=p.userData.baseY+Math.sin(t*1.7+p.userData.seed)*.045;p.rotation.z=Math.sin(t+p.userData.seed)*.055}
+function animate(){animationId=requestAnimationFrame(animate);const rect=canvas.getBoundingClientRect();if(renderer.domElement.width!==Math.floor(rect.width*renderer.getPixelRatio())||renderer.domElement.height!==Math.floor(rect.height*renderer.getPixelRatio())){renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/Math.max(1,rect.height);camera.updateProjectionMatrix()}t+=.016;shock*=.975;if(waveSim){waveSim.step(1/60,settings.waves/100);waveSim.writeTo(waterPositions,waterBase);sea.geometry.computeVertexNormals()}for(const p of icePieces){if(p.userData.falling){p.userData.speed+=.008;p.position.y-=p.userData.speed;if(p.position.y<=.85){p.position.y=.85;p.userData.falling=false;p.userData.baseY=.85;shock=Math.max(shock,.48)}}else p.position.y=p.userData.baseY+Math.sin(t*1.7+p.userData.seed)*.045;p.rotation.z=Math.sin(t+p.userData.seed)*.055}
 penguinGroup.children.forEach(p=>{p.rotation.y=Math.sin(t*.6+p.userData.phase)*.48;p.position.y=.81+Math.sin(t*2+p.userData.phase)*.012});if(currentSpec.kind==='polar'){ship.position.x=.25+Math.sin(t*.34)*1.5;ship.position.z=.22+Math.cos(t*.34)*.68;ship.rotation.y=Math.cos(t*.34)*.35;ship.rotation.z=Math.sin(t*2)*.027;}else if(currentSpec.kind==='volcano'){ship.position.x=1.6+Math.sin(t*.34)*.3;}else if(glass){glass.scale.y=.78+Math.sin(t*2)*.035;}camera.position.set(Math.sin(orbit.theta)*orbit.dist*Math.sin(orbit.phi),Math.cos(orbit.phi)*orbit.dist,Math.cos(orbit.theta)*orbit.dist*Math.sin(orbit.phi));camera.lookAt(0,.8,0);renderer.render(scene,camera)}
 const plane=new THREE.Plane(new THREE.Vector3(0,1,0),-.8),hitPoint=new THREE.Vector3();
 function picking(e){const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(root.children,true).find(h=>{let p=h.object;while(p&&p!==root){if(p.userData?.sceneId)return true;p=p.parent}return false});if(!hit)return null;let p=hit.object;while(p&&!p.userData.sceneId)p=p.parent;return p}
@@ -198,7 +202,7 @@ canvas.addEventListener('pointerdown',e=>{
  orbit.x=e.clientX;orbit.y=e.clientY;canvas.setPointerCapture(e.pointerId);
  const p=picking(e);
  if(p){selectedId=p.userData.sceneId;updateObjectList();dragItem={id:selectedId,start:[e.clientX,e.clientY]};orbit.down=false;$('message').textContent='选中 '+selectedId+'，拖动调整位置';}
- else{dragItem=null;orbit.down=true;shock=Math.max(shock,.2)}
+ else{dragItem=null;orbit.down=true;shock=Math.max(shock,.2);if(waveSim){const wavePlane=new THREE.Plane(new THREE.Vector3(0,1,0),-.75);const point=new THREE.Vector3();if(raycaster.ray.intersectPlane(wavePlane,point))waveSim.splash(point.x,point.z,1.3)}}
 });
 canvas.addEventListener('pointermove',e=>{
  if(dragItem){
